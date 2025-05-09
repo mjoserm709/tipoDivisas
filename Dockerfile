@@ -11,7 +11,7 @@ RUN dotnet publish -c Release -o /app/publish
 # Instalar Playwright y navegadores
 RUN dotnet tool install --global Microsoft.Playwright.CLI
 ENV PATH="$PATH:/root/.dotnet/tools"
-RUN playwright install
+RUN playwright install --with-deps
 
 # Etapa de ejecución
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
