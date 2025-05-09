@@ -18,11 +18,11 @@ namespace ApiTipoCambio.Controllers
                 var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
                 var page = await browser.NewPageAsync();
 
-                await page.GotoAsync("https://www.bch.hn/...", new PageGotoOptions
-                    {
-                        WaitUntil = WaitUntilState.DOMContentLoaded,
-                        Timeout = 60000 // 60 segundos
-                    });
+                await page.GotoAsync("https://www.bch.hn/estadisticas-y-publicaciones-economicas/tipo-de-cambio-nominal", new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                    Timeout = 60000 // 60 segundos
+                });
 
                 await page.WaitForSelectorAsync("a[href$='.xlsx']");
 
