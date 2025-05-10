@@ -24,16 +24,17 @@ namespace ApiTipoCambio.Controllers
                 using var connection = new SqlConnection(_connectionString);
                 await connection.OpenAsync();
 
-                var fechaConvertida = DateTime.ParseExact(fecha, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+                var fechaConvertida = DateTime.ParseExact(fecha, "yyyy-MM-dd", CultureInfo.InvariantCulture).Date;
 
-                // 1️⃣ Buscar en la base de datos por la fecha enviada
-                var cmd = new SqlCommand("SELECT TOP 1 * FROM TipoCambioBCH WHERE Fecha = @Fecha", connection);
+                var cmd = new SqlCommand(@"
+                    SELECT TOP 1 * FROM TipoCambioBCH 
+                    WHERE CAST(Fecha AS DATE) = @Fecha", connection);
+
                 cmd.Parameters.AddWithValue("@Fecha", fechaConvertida);
 
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
-                    // ✅ Si existe, retorna el registro
                     return Ok(new
                     {
                         fecha = ((DateTime)reader["Fecha"]).ToString("yyyy-MM-dd"),
@@ -42,7 +43,7 @@ namespace ApiTipoCambio.Controllers
                     });
                 }
 
-                // 2️⃣ Si no existe, buscar en la API externa
+                // Buscar en la API externa solo si no existe en BD
                 using var client = new HttpClient();
                 var apiResponse = await client.GetAsync("https://tipodivisas.onrender.com/api/TipoCambioBCH");
 
@@ -52,29 +53,36 @@ namespace ApiTipoCambio.Controllers
 
                     if (apiData != null && DateTime.TryParseExact(apiData.Fecha, "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime fechaAPI))
                     {
-                        // 3️⃣ Si la API devolvió una fecha válida, guardar en la base y devolverla
-                        await reader.CloseAsync(); // Cerrar lector para nueva consulta
-
-                        var insertCmd = new SqlCommand(@"
-                            INSERT INTO TipoCambioBCH (Fecha, Compra, Venta) 
-                            VALUES (@Fecha, @Compra, @Venta)", connection);
-
-                        insertCmd.Parameters.AddWithValue("@Fecha", fechaAPI);
-                        insertCmd.Parameters.AddWithValue("@Compra", apiData.Compra);
-                        insertCmd.Parameters.AddWithValue("@Venta", apiData.Venta);
-
-                        await insertCmd.ExecuteNonQueryAsync();
-
-                        return Ok(new
+                        Console.WriteLine($"⚠️ API devolvió fecha {fechaAPI.Date:yyyy-MM-dd}, no coincide con la solicitada {fechaConvertida:yyyy-MM-dd}. No se guarda.");
+                        if (fechaAPI.Date == fechaConvertida)
                         {
-                            fecha = fechaAPI.ToString("yyyy-MM-dd"),
-                            compra = apiData.Compra,
-                            venta = apiData.Venta
-                        });
+                            await reader.CloseAsync();
+
+                            var insertCmd = new SqlCommand(@"
+                                INSERT INTO TipoCambioBCH (Fecha, Compra, Venta) 
+                                VALUES (@Fecha, @Compra, @Venta)", connection);
+
+                            insertCmd.Parameters.AddWithValue("@Fecha", fechaAPI.Date);
+                            insertCmd.Parameters.AddWithValue("@Compra", apiData.Compra);
+                            insertCmd.Parameters.AddWithValue("@Venta", apiData.Venta);
+
+                            await insertCmd.ExecuteNonQueryAsync();
+
+                            return Ok(new
+                            {
+                                fecha = fechaAPI.ToString("yyyy-MM-dd"),
+                                compra = apiData.Compra,
+                                venta = apiData.Venta
+                            });
+                        }
+                        else
+                        {
+                            Console.WriteLine($"⚠️ API devolvió fecha {fechaAPI:yyyy-MM-dd}, no coincide con la solicitada {fechaConvertida:yyyy-MM-dd}. No se guarda.");
+                        }
                     }
                 }
 
-                // 4️⃣ Si la API no devolvió un dato válido, cargar la última fecha registrada en la base de datos
+                // Cargar la última fecha registrada en la base de datos
                 await reader.CloseAsync();
                 var lastCmd = new SqlCommand("SELECT TOP 1 * FROM TipoCambioBCH ORDER BY Fecha DESC", connection);
                 using var lastReader = await lastCmd.ExecuteReaderAsync();
@@ -89,7 +97,6 @@ namespace ApiTipoCambio.Controllers
                     });
                 }
 
-                // ❌ Si no hay registros en la base, devuelve error
                 return NotFound(new { mensaje = "❌ No se encontró información en la base de datos ni en la API externa." });
             }
             catch (Exception ex)
@@ -143,7 +150,7 @@ namespace ApiTipoCambio.Controllers
                 using var connection = new SqlConnection(_connectionString);
                 await connection.OpenAsync();
 
-                var cmd = new SqlCommand("SELECT Fecha, Compra, Venta FROM TipoCambioBCH ORDER BY Fecha DESC", connection);
+                var cmd = new SqlCommand("SELECT Fecha, Compra, Venta FROM TipoCambioBCH ORDER BY id DESC", connection);
 
                 using var reader = await cmd.ExecuteReaderAsync();
                 var historial = new List<object>();

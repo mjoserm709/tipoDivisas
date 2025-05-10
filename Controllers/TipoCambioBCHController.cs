@@ -43,9 +43,11 @@ namespace ApiTipoCambio.Controllers
                 using var workbook = new XLWorkbook(tempPath);
                 var sheet = workbook.Worksheet("Tipo de Cambio Diario");
 
-                // Buscar la fecha del día o la más cercana anterior
                 var fechaHoy = DateTime.Today;
-                var fechasOrdenadas = sheet.RowsUsed()
+                Console.WriteLine($"📅 Fecha de Hoy: {fechaHoy:yyyy-MM-dd}");
+
+                // 1️⃣ Buscar primero la fecha exacta de hoy
+                var rowExacta = sheet.RowsUsed()
                     .Select(row => new
                     {
                         Row = row,
@@ -56,11 +58,23 @@ namespace ApiTipoCambio.Controllers
                             out var parsedDate
                         ) ? parsedDate : (DateTime?)null
                     })
-                    .Where(x => x.Fecha.HasValue && x.Fecha.Value <= fechaHoy)
-                    .OrderByDescending(x => x.Fecha.Value)
-                    .ToList();
+                    .FirstOrDefault(x => x.Fecha.HasValue && x.Fecha.Value == fechaHoy);
 
-                var rowSeleccionada = fechasOrdenadas.FirstOrDefault();
+                // 2️⃣ Si no existe, buscar la fecha más reciente anterior
+                var rowSeleccionada = rowExacta ?? sheet.RowsUsed()
+                    .Select(row => new
+                    {
+                        Row = row,
+                        Fecha = DateTime.TryParse(
+                            row.Cell(1).GetString().Trim(),
+                            new CultureInfo("es-HN"),
+                            DateTimeStyles.None,
+                            out var parsedDate
+                        ) ? parsedDate : (DateTime?)null
+                    })
+                    .Where(x => x.Fecha.HasValue && x.Fecha.Value < fechaHoy)
+                    .OrderByDescending(x => x.Fecha.Value)
+                    .FirstOrDefault();
 
                 if (rowSeleccionada == null)
                     return Ok(new { mensaje = "❌ No se encontró una fecha válida para hoy o días anteriores.", fecha = "", compra = "", venta = "" });
