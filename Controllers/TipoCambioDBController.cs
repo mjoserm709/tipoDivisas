@@ -83,5 +83,37 @@ namespace ApiTipoCambio.Controllers
                 return StatusCode(500, new { error = ex.Message });
             }
         }
+        [HttpGet("historial")]
+        public async Task<IActionResult> GetHistorial()
+        {
+            try
+            {
+                using var connection = new SqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                var cmd = new SqlCommand("SELECT Fecha, Compra, Venta FROM TipoCambioBCH ORDER BY Fecha DESC", connection);
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                var historial = new List<object>();
+
+                while (await reader.ReadAsync())
+                {
+                    historial.Add(new
+                    {
+                        fecha = ((DateTime)reader["Fecha"]).ToString("yyyy-MM-dd"),
+                        compra = reader["Compra"].ToString(),
+                        venta = reader["Venta"].ToString()
+                    });
+                }
+
+                return Ok(historial);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Error en GET Historial: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
     }
 }
