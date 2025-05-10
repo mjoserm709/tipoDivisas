@@ -21,7 +21,7 @@ namespace ApiTipoCambio.Controllers
                 await page.GotoAsync("https://www.bch.hn/estadisticas-y-publicaciones-economicas/tipo-de-cambio-nominal", new PageGotoOptions
                 {
                     WaitUntil = WaitUntilState.DOMContentLoaded,
-                    Timeout = 30000 // Reduce a 30 segundos para evitar timeout en Render
+                    Timeout = 30000
                 });
 
                 var enlace = await page.Locator("a[href$='.xlsx']").First.GetAttributeAsync("href");
@@ -43,23 +43,31 @@ namespace ApiTipoCambio.Controllers
                 using var workbook = new XLWorkbook(tempPath);
                 var sheet = workbook.Worksheet("Tipo de Cambio Diario");
 
-                var lastFechaRow = sheet.RowsUsed()
-                    .Reverse()
-                    .FirstOrDefault(row => 
-                        DateTime.TryParse(
+                // Buscar la fecha del día o la más cercana anterior
+                var fechaHoy = DateTime.Today;
+                var fechasOrdenadas = sheet.RowsUsed()
+                    .Select(row => new
+                    {
+                        Row = row,
+                        Fecha = DateTime.TryParse(
                             row.Cell(1).GetString().Trim(),
                             new CultureInfo("es-HN"),
                             DateTimeStyles.None,
-                            out _
-                        )
-                    );
+                            out var parsedDate
+                        ) ? parsedDate : (DateTime?)null
+                    })
+                    .Where(x => x.Fecha.HasValue && x.Fecha.Value <= fechaHoy)
+                    .OrderByDescending(x => x.Fecha.Value)
+                    .ToList();
 
-                if (lastFechaRow == null)
-                    return Ok(new { mensaje = "❌ No se encontró una fila con fecha válida.", fecha = "", compra = "", venta = "" });
+                var rowSeleccionada = fechasOrdenadas.FirstOrDefault();
 
-                var fecha = lastFechaRow.Cell(1).GetString().Trim();
-                var compra = lastFechaRow.Cell(2).GetString().Trim();
-                var venta = lastFechaRow.Cell(3).GetString().Trim();
+                if (rowSeleccionada == null)
+                    return Ok(new { mensaje = "❌ No se encontró una fecha válida para hoy o días anteriores.", fecha = "", compra = "", venta = "" });
+
+                var fecha = rowSeleccionada.Fecha.Value.ToString("dd/MM/yyyy");
+                var compra = rowSeleccionada.Row.Cell(2).GetString().Trim();
+                var venta = rowSeleccionada.Row.Cell(3).GetString().Trim();
 
                 return Ok(new { fecha, compra, venta });
             }
@@ -68,6 +76,5 @@ namespace ApiTipoCambio.Controllers
                 return StatusCode(500, new { error = "❗ Error en la API: " + ex.Message });
             }
         }
-
     }
 }
